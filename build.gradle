@@ -1,0 +1,102 @@
+plugins {
+    id 'java-gradle-plugin'
+    id 'groovy'
+    id 'maven-publish'
+}
+
+apply from: "$rootDir/gradle/versioning.gradle"
+    
+group = 'ch.so.agi.gretlgt'
+
+repositories {
+    mavenLocal()
+    maven { 
+        url "https://jars.sogeo.services/mirror" 
+    }
+    maven { 
+        url "https://repo.osgeo.org/repository/release/" 
+    }
+    maven {
+        url "https://maven.geo-solutions.it"
+    }
+    mavenCentral()
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(11)
+    }
+    withSourcesJar()
+    withJavadocJar()
+}
+
+ext {
+    geotoolsVersion = "28.5"
+}
+
+dependencies {
+    implementation "org.geotools:gt-main:${geotoolsVersion}"
+    implementation "org.geotools:gt-geotiff:${geotoolsVersion}"
+    implementation "org.geotools:gt-coverage:${geotoolsVersion}"
+    implementation "org.geotools:gt-arcgrid:${geotoolsVersion}"
+    implementation "org.geotools:gt-shapefile:${geotoolsVersion}"
+    implementation "org.geotools:gt-process-raster:${geotoolsVersion}"
+    //implementation "org.geotools:gt-epsg-hsql:${geotoolsVersion}"
+
+    runtimeOnly "org.geotools:gt-epsg-hsql:${geotoolsVersion}"
+
+    testImplementation "org.junit.jupiter:junit-jupiter:5.10.3"
+    testImplementation gradleTestKit()
+}
+
+tasks.withType(Test).configureEach {
+    useJUnitPlatform()
+}
+
+gradlePlugin {
+    plugins {
+        gretlgt {
+            id = 'gretl-gt'
+            implementationClass = 'ch.so.agi.gretlgt.GretlGtPlugin'
+            displayName = 'gretl-gt'
+            description = 'Gradle plugin for geodata workflows using GeoTools'
+        }
+    }
+}
+
+sourceSets {
+    functionalTest {
+        groovy {
+            compileClasspath += sourceSets.main.output + configurations.testRuntimeClasspath
+            runtimeClasspath += output + compileClasspath
+        }
+        resources.srcDir file('src/functionalTest/resources')
+    }
+}
+
+configurations {
+    functionalTestImplementation.extendsFrom testImplementation
+    functionalTestRuntimeOnly.extendsFrom testRuntimeOnly
+}
+
+tasks.register('functionalTest', Test) {
+    description = 'Runs functional tests using Gradle TestKit'
+    group = 'verification'
+    testClassesDirs = sourceSets.functionalTest.output.classesDirs
+    classpath = sourceSets.functionalTest.runtimeClasspath
+    useJUnitPlatform()
+}
+
+check.dependsOn tasks.named('functionalTest')
+
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            from components.java
+            pom {
+                name = 'gretl-gt'
+                description = 'Gradle plugin for geodata workflows using GeoTools'
+            }
+        }
+    }
+}
