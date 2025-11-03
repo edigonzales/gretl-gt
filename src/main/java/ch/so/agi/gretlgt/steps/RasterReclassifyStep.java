@@ -52,8 +52,6 @@ public class RasterReclassifyStep {
         int[] classValues = {0, 55, 60, 65, 70};
         double noData = -100;
         GridCoverage2D out1 = RasterReclassify.reclassifyByBreaks(stamped, 0, breaks, classValues, noData);
-     
-        
 
         GeoTiffWriter writer = null;
         try {
