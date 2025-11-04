@@ -36,29 +36,41 @@ public class RasterReclassifyStep {
     
     public void execute(Path inputPath, Path outputPath) throws IOException, NoSuchAuthorityCodeException, FactoryException {
         log.lifecycle(String.format("Start RasterReclassifyStep(Name: %s inputPath: %s outputPath: %s)", taskName, inputPath, outputPath));
-        
-        AbstractGridFormat format = GridFormatFinder.findFormat(outputPath.toFile());
 
-        System.out.println(outputPath);
-        
-        GridCoverage2DReader reader = format.getReader(outputPath.toFile());
-        GridCoverage2D cov = reader.read(null);
-        
+        AbstractGridFormat format = GridFormatFinder.findFormat(inputPath.toFile());
+        GridCoverage2DReader reader = null;
+        GridCoverage2D cov;
+        try {
+            reader = format.getReader(inputPath.toFile());
+            cov = reader.read(null);
+        } finally {
+            if (reader != null) {
+                reader.dispose();
+            }
+        }
+
         CoordinateReferenceSystem swiss = CRS.decode("EPSG:2056", true);
         GridCoverage2D stamped = RasterReclassify.ensureCrs(cov, swiss);
-        
-        
+
         double[] breaks = {0, 55, 60, 65, 70, 500};
         int[] classValues = {0, 55, 60, 65, 70};
         double noData = -100;
         GridCoverage2D out1 = RasterReclassify.reclassifyByBreaks(stamped, 0, breaks, classValues, noData);
 
+        File outFile = outputPath.toFile();
+        File parent = outFile.getParentFile();
+        if (parent != null) {
+            parent.mkdirs();
+        }
+
         GeoTiffWriter writer = null;
         try {
-            writer = new GeoTiffWriter(new File("/Users/stefan/tmp/reclass.tif"));
+            writer = new GeoTiffWriter(outFile);
             writer.write(out1, null);
         } finally {
-            if (writer != null) writer.dispose();  // important: releases resources
+            if (writer != null) {
+                writer.dispose();  // important: releases resources
+            }
         }
     }
 }
