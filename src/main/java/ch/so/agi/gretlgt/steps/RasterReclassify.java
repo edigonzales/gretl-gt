@@ -2,6 +2,7 @@ package ch.so.agi.gretlgt.steps;
 
 import org.geotools.coverage.grid.GridCoverage2D;
 import org.geotools.coverage.grid.GridCoverageFactory;
+import org.geotools.coverage.util.CoverageUtilities;
 import org.geotools.geometry.Envelope2D;
 import org.geotools.geometry.jts.ReferencedEnvelope;
 import org.geotools.process.raster.RangeLookupProcess;
@@ -13,6 +14,7 @@ import org.opengis.util.ProgressListener;
 import java.awt.image.RenderedImage;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Objects;
 
@@ -65,13 +67,24 @@ public final class RasterReclassify {
         }
 
         RangeLookupProcess proc = new RangeLookupProcess();
-        return proc.execute(
+        GridCoverage2D coverage = proc.execute(
                 source,
                 Integer.valueOf(band),
                 ranges,
                 classValues,
                 Double.valueOf(noData),
                 (ProgressListener) null
+        );
+        HashMap<String, Object> properties = new HashMap<>(coverage.getProperties());
+        CoverageUtilities.setNoDataProperty(properties, Double.valueOf(noData));
+        GridCoverageFactory factory = new GridCoverageFactory();
+        return factory.create(
+                coverage.getName(),
+                coverage.getRenderedImage(),
+                coverage.getGridGeometry(),
+                coverage.getSampleDimensions(),
+                new GridCoverage2D[] {coverage},
+                properties
         );
     }
 

@@ -23,13 +23,9 @@ repositories {
 }
 
 java {
-/*
     toolchain {
         languageVersion = JavaLanguageVersion.of(11)
     }
-*/
-    sourceCompatibility = '11'
-    targetCompatibility = '11'
     withSourcesJar()
     withJavadocJar()
 }
