@@ -20,13 +20,12 @@ import org.geotools.coverage.grid.io.GridFormatFinder;
 import org.geotools.data.DataStore;
 import org.geotools.data.DataStoreFinder;
 import org.geotools.data.simple.SimpleFeatureCollection;
-import org.geotools.data.simple.SimpleFeatureIterator;
 import org.geotools.data.simple.SimpleFeatureSource;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.opengis.feature.simple.SimpleFeature;
 
-import it.geosolutions.jaiext.range.NoDataContainer;
+import org.geotools.data.simple.SimpleFeatureIterator;
 
 class VectorizeStepTest {
 
@@ -47,7 +46,7 @@ class VectorizeStepTest {
 
         DataStore dataStore = DataStoreFinder.getDataStore(params);
         assertNotNull(dataStore, "GeoPackage datastore should be accessible after vectorization");
-        try (DataStore ignored = dataStore) {
+        try {
             String[] typeNames = dataStore.getTypeNames();
             assertEquals(1, typeNames.length, "Vectorization should create exactly one layer");
             assertEquals("reclass", typeNames[0], "Layer name should match the raster file name");
@@ -70,6 +69,10 @@ class VectorizeStepTest {
 
             Set<Double> expectedValues = readRasterValues(input);
             assertEquals(expectedValues, values, "Vectorized layer should contain one feature per raster value");
+        } finally {
+            if (dataStore != null) {
+                dataStore.dispose();
+            }
         }
     }
 
@@ -77,13 +80,10 @@ class VectorizeStepTest {
         GridCoverage2D coverage = readCoverage(rasterPath);
         try {
             Set<Double> values = collectDistinctValues(coverage);
-            NoDataContainer noData = org.geotools.coverage.util.CoverageUtilities.getNoDataProperty(coverage);
-            if (noData != null) {
-                double[] noDataValues = noData.getAsDoubles();
-                if (noDataValues != null) {
-                    for (double nd : noDataValues) {
-                        values.remove(nd);
-                    }
+            double[] noDataValues = coverage.getSampleDimensions()[0].getNoDataValues();
+            if (noDataValues != null) {
+                for (double nd : noDataValues) {
+                    values.remove(nd);
                 }
             }
             return values;
@@ -114,9 +114,11 @@ class VectorizeStepTest {
         Set<Double> values = new HashSet<>();
         int width = raster.getWidth();
         int height = raster.getHeight();
+        int minX = raster.getMinX();
+        int minY = raster.getMinY();
         for (int y = 0; y < height; y++) {
             for (int x = 0; x < width; x++) {
-                double sample = raster.getSampleDouble(x, y, 0);
+                double sample = raster.getSampleDouble(minX + x, minY + y, 0);
                 values.add(sample);
             }
         }
