@@ -41,6 +41,7 @@ dependencies {
     implementation "org.geotools:gt-arcgrid:${geotoolsVersion}"
     implementation "org.geotools:gt-shapefile:${geotoolsVersion}"
     implementation "org.geotools:gt-process-raster:${geotoolsVersion}"
+    implementation "org.geotools:gt-geopkg:${geotoolsVersion}"
     //implementation "org.geotools:gt-epsg-hsql:${geotoolsVersion}"
 
     runtimeOnly "org.geotools:gt-epsg-hsql:${geotoolsVersion}"
