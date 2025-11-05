@@ -1,10 +1,10 @@
 package ch.so.agi.gretlgt.logging;
 
 /**
- * Utility class defining the logging levels when using the gretl logging in a
- * standalone environment. The mapping to the standalone logging framework does
- * not include renaming the outputs to the gretl names. A gretl info message
- * will be logged as fine etc.
+ * Adapts GRETL's semantic log levels to {@link java.util.logging.Level} values
+ * used by the standalone logging backend. The mapping preserves the intention
+ * of each level even though the underlying names differ (e.g. {@code INFO}
+ * corresponds to {@link java.util.logging.Level#FINE}).
  */
 public class Level {
 
@@ -13,7 +13,7 @@ public class Level {
     public static final Level INFO = new Level(java.util.logging.Level.FINE);
     public static final Level DEBUG = new Level(java.util.logging.Level.FINER);
 
-    private java.util.logging.Level innerLevel;
+    private final java.util.logging.Level innerLevel;
 
     private Level(java.util.logging.Level innerLevel) {
         if (innerLevel == null)
@@ -22,6 +22,12 @@ public class Level {
         this.innerLevel = innerLevel;
     }
 
+    /**
+     * Exposes the wrapped {@link java.util.logging.Level} so adaptors can pass
+     * it to the underlying logger implementation.
+     *
+     * @return the mapped {@code java.util.logging.Level}
+     */
     java.util.logging.Level getInnerLevel() {
         return innerLevel;
     }

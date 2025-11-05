@@ -1,16 +1,23 @@
 package ch.so.agi.gretlgt.logging;
 
 /**
- * Logger used in all GRETL classes. As Gretl is based on a build tool, it uses
- * the special lifecycle log level which informs gretl users on start and finish
- * of the processing of one step. Consequently, each step must have exactly two
- * lifecycle log outputs. One when starting the execution of the Step (after
- * input validation). One after finishing the execution of the Step (after
- * cleanup). Info is used for more detailed feedback to the user. Debug is used
- * for very detailed output that should help in debugging a problem. Error is
- * used to log Exception messages. Priority of the logOutput: error &gt; lifecycle
- * &gt; info &gt; debug. Example: Setting the loglevel to lifecycle means that
- * lifecycle and error logs will be output
+ * Core GRETL logging contract that abstracts over the underlying logging
+ * backend (Gradle's logger when executed inside a build, or
+ * {@code java.util.logging} when running standalone).
+ * <p>
+ * GRETL distinguishes the following semantic levels:
+ * <ul>
+ *   <li>{@link #lifecycle(String)} &ndash; emitted exactly twice per step to
+ *       announce start and completion after validation/cleanup.</li>
+ *   <li>{@link #info(String)} &ndash; additional progress information aimed at
+ *       end users.</li>
+ *   <li>{@link #debug(String)} &ndash; verbose diagnostic details to help with
+ *       troubleshooting.</li>
+ *   <li>{@link #error(String, Throwable)} &ndash; failure summaries including
+ *       the underlying exception.</li>
+ * </ul>
+ * Backends decide which messages to show according to their configured
+ * threshold (e.g. {@code lifecycle} implies lifecycle and error output).
  */
 public interface GretlLogger {
 
