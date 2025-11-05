@@ -1,5 +1,7 @@
 package ch.so.agi.gretlgt.steps;
 
+import java.awt.image.Raster;
+import java.awt.image.RenderedImage;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -9,6 +11,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.TreeSet;
 
 import org.geotools.coverage.grid.GridCoverage2D;
 import org.geotools.coverage.grid.io.AbstractGridFormat;
@@ -27,6 +30,7 @@ import org.geotools.feature.simple.SimpleFeatureBuilder;
 import org.geotools.feature.simple.SimpleFeatureTypeBuilder;
 import org.geotools.process.ProcessException;
 import org.geotools.process.raster.PolygonExtractionProcess;
+import org.jaitools.numeric.Range;
 import org.locationtech.jts.geom.Geometry;
 import org.locationtech.jts.geom.GeometryCollection;
 import org.locationtech.jts.geom.GeometryFactory;
@@ -103,10 +107,13 @@ public class VectorizeStep {
         GridCoverage2D coverage = readCoverage(rasterPath);
         try {
             List<Double> noDataValues = determineNoDataValues(coverage, band);
+            List<Double> classificationValues = determineClassificationValues(coverage, band, noDataValues);
+            List<Range> classificationRanges = buildClassificationRanges(classificationValues);
             String layerName = deriveLayerName(rasterPath);
 
             SimpleFeatureCollection dissolved = dissolveByValue(
-                    extractPolygons(coverage, band, noDataValues),
+                    extractPolygons(coverage, band, noDataValues, classificationRanges),
+                    classificationValues,
                     coverage.getCoordinateReferenceSystem2D(),
                     layerName);
             writeGeoPackageLayer(geopackagePath, layerName, dissolved);
@@ -150,7 +157,8 @@ public class VectorizeStep {
 
     private SimpleFeatureCollection extractPolygons(GridCoverage2D coverage,
                                                     int band,
-                                                    List<Double> noDataValues) throws IOException {
+                                                    List<Double> noDataValues,
+                                                    List<Range> classificationRanges) throws IOException {
         PolygonExtractionProcess process = new PolygonExtractionProcess();
         Collection<Number> noDataNumbers = toNumberCollection(noDataValues);
         try {
@@ -159,7 +167,7 @@ public class VectorizeStep {
                     Boolean.FALSE,
                     null,
                     noDataNumbers,
-                    null,
+                    classificationRanges,
                     null);
         } catch (ProcessException e) {
             throw new IOException("Failed to extract polygons from raster coverage", e);
@@ -178,9 +186,10 @@ public class VectorizeStep {
     }
 
     private SimpleFeatureCollection dissolveByValue(SimpleFeatureCollection polygons,
+                                                    List<Double> classificationValues,
                                                     CoordinateReferenceSystem crs,
                                                     String layerName) {
-        Map<Double, List<Geometry>> geometriesByValue = collectGeometriesByValue(polygons);
+        Map<Double, List<Geometry>> geometriesByValue = collectGeometriesByValue(polygons, classificationValues);
 
         GeometryFactory geometryFactory = new GeometryFactory();
         SimpleFeatureType featureType = buildFeatureType(crs, layerName);
@@ -200,7 +209,8 @@ public class VectorizeStep {
         return collection;
     }
 
-    private Map<Double, List<Geometry>> collectGeometriesByValue(SimpleFeatureCollection polygons) {
+    private Map<Double, List<Geometry>> collectGeometriesByValue(SimpleFeatureCollection polygons,
+                                                                 List<Double> classificationValues) {
         Map<Double, List<Geometry>> geometriesByValue = new LinkedHashMap<>();
         try (SimpleFeatureIterator iterator = polygons.features()) {
             while (iterator.hasNext()) {
@@ -215,8 +225,17 @@ public class VectorizeStep {
                     throw new IllegalStateException("Polygon extraction returned feature without numeric value attribute");
                 }
 
-                double value = ((Number) attribute).doubleValue();
-                geometriesByValue.computeIfAbsent(value, ignored -> new ArrayList<>()).add(geometry);
+                double classificationValue = ((Number) attribute).doubleValue();
+                int index = (int) Math.round(classificationValue);
+                if (Math.abs(classificationValue - index) > 1e-6) {
+                    throw new IllegalStateException("Expected integer classification value but received: " + classificationValue);
+                }
+                if (index < 1 || index > classificationValues.size()) {
+                    throw new IllegalStateException("Classification value " + index + " outside configured ranges");
+                }
+
+                double originalValue = classificationValues.get(index - 1);
+                geometriesByValue.computeIfAbsent(originalValue, ignored -> new ArrayList<>()).add(geometry);
             }
         }
         return geometriesByValue;
@@ -298,6 +317,47 @@ public class VectorizeStep {
                 break;
             }
         }
+    }
+
+    private List<Double> determineClassificationValues(GridCoverage2D coverage, int band, List<Double> noDataValues) {
+        RenderedImage image = coverage.getRenderedImage();
+        Raster raster = image.getData();
+
+        TreeSet<Double> values = new TreeSet<>();
+        int width = raster.getWidth();
+        int height = raster.getHeight();
+        int minX = raster.getMinX();
+        int minY = raster.getMinY();
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                double sample = raster.getSampleDouble(minX + x, minY + y, band);
+                if (!Double.isNaN(sample)) {
+                    values.add(sample);
+                }
+            }
+        }
+
+        for (Double noDataValue : noDataValues) {
+            if (noDataValue == null) {
+                continue;
+            }
+            if (Double.isNaN(noDataValue)) {
+                values.removeIf(sample -> Double.isNaN(sample));
+            } else {
+                values.remove(noDataValue);
+            }
+        }
+
+        return new ArrayList<>(values);
+    }
+
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private List<Range> buildClassificationRanges(List<Double> classificationValues) {
+        List<Range> ranges = new ArrayList<>(classificationValues.size());
+        for (Double value : classificationValues) {
+            ranges.add(Range.create(value, true, value, true));
+        }
+        return ranges;
     }
 
     private String deriveLayerName(Path rasterPath) {
