@@ -1,21 +1,16 @@
 package ch.so.agi.gretlgt.steps;
 
-import java.awt.geom.Point2D;
-import java.awt.image.Raster;
-import java.awt.image.RenderedImage;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
-import org.locationtech.jts.geom.Coordinate;
 import org.geotools.coverage.grid.GridCoverage2D;
-import org.geotools.coverage.grid.GridEnvelope2D;
-import org.geotools.coverage.grid.GridGeometry2D;
 import org.geotools.coverage.grid.io.AbstractGridFormat;
 import org.geotools.coverage.grid.io.GridCoverage2DReader;
 import org.geotools.coverage.grid.io.GridFormatFinder;
@@ -25,12 +20,15 @@ import org.geotools.data.DefaultTransaction;
 import org.geotools.data.FeatureSource;
 import org.geotools.data.Transaction;
 import org.geotools.data.simple.SimpleFeatureCollection;
+import org.geotools.data.simple.SimpleFeatureIterator;
 import org.geotools.data.simple.SimpleFeatureStore;
 import org.geotools.feature.DefaultFeatureCollection;
 import org.geotools.feature.simple.SimpleFeatureBuilder;
 import org.geotools.feature.simple.SimpleFeatureTypeBuilder;
-import org.geotools.geometry.DirectPosition2D;
+import org.geotools.process.ProcessException;
+import org.geotools.process.raster.PolygonExtractionProcess;
 import org.locationtech.jts.geom.Geometry;
+import org.locationtech.jts.geom.GeometryCollection;
 import org.locationtech.jts.geom.GeometryFactory;
 import org.locationtech.jts.geom.MultiPolygon;
 import org.locationtech.jts.geom.Polygon;
@@ -38,9 +36,6 @@ import org.locationtech.jts.operation.union.UnaryUnionOp;
 import org.opengis.feature.simple.SimpleFeature;
 import org.opengis.feature.simple.SimpleFeatureType;
 import org.opengis.referencing.crs.CoordinateReferenceSystem;
-import org.opengis.metadata.spatial.PixelOrientation;
-import org.opengis.referencing.operation.MathTransform2D;
-import org.opengis.referencing.operation.TransformException;
 
 import ch.so.agi.gretlgt.logging.GretlLogger;
 import ch.so.agi.gretlgt.logging.LogEnvironment;
@@ -110,7 +105,10 @@ public class VectorizeStep {
             List<Double> noDataValues = determineNoDataValues(coverage, band);
             String layerName = deriveLayerName(rasterPath);
 
-            SimpleFeatureCollection dissolved = dissolveByValue(coverage, band, noDataValues, layerName);
+            SimpleFeatureCollection dissolved = dissolveByValue(
+                    extractPolygons(coverage, band, noDataValues),
+                    coverage.getCoordinateReferenceSystem2D(),
+                    layerName);
             writeGeoPackageLayer(geopackagePath, layerName, dissolved);
         } finally {
             if (coverage != null) {
@@ -150,16 +148,46 @@ public class VectorizeStep {
         return result;
     }
 
-    private SimpleFeatureCollection dissolveByValue(GridCoverage2D coverage, int band, List<Double> noDataValues,
-                                                    String layerName) throws IOException {
-        Map<Double, List<Polygon>> polygonsByValue = collectPolygonsByValue(coverage, band, noDataValues);
+    private SimpleFeatureCollection extractPolygons(GridCoverage2D coverage,
+                                                    int band,
+                                                    List<Double> noDataValues) throws IOException {
+        PolygonExtractionProcess process = new PolygonExtractionProcess();
+        Collection<Number> noDataNumbers = toNumberCollection(noDataValues);
+        try {
+            return process.execute(coverage,
+                    band,
+                    Boolean.FALSE,
+                    null,
+                    noDataNumbers,
+                    null,
+                    null);
+        } catch (ProcessException e) {
+            throw new IOException("Failed to extract polygons from raster coverage", e);
+        }
+    }
+
+    private Collection<Number> toNumberCollection(List<Double> values) {
+        if (values.isEmpty()) {
+            return List.of();
+        }
+        List<Number> numbers = new ArrayList<>(values.size());
+        for (Double value : values) {
+            numbers.add(value);
+        }
+        return numbers;
+    }
+
+    private SimpleFeatureCollection dissolveByValue(SimpleFeatureCollection polygons,
+                                                    CoordinateReferenceSystem crs,
+                                                    String layerName) {
+        Map<Double, List<Geometry>> geometriesByValue = collectGeometriesByValue(polygons);
 
         GeometryFactory geometryFactory = new GeometryFactory();
-        SimpleFeatureType featureType = buildFeatureType(coverage.getCoordinateReferenceSystem2D(), layerName);
+        SimpleFeatureType featureType = buildFeatureType(crs, layerName);
         DefaultFeatureCollection collection = new DefaultFeatureCollection();
 
         int featureIndex = 0;
-        for (Map.Entry<Double, List<Polygon>> entry : polygonsByValue.entrySet()) {
+        for (Map.Entry<Double, List<Geometry>> entry : geometriesByValue.entrySet()) {
             Geometry merged = UnaryUnionOp.union(entry.getValue());
             Geometry geometry = ensureMultiPolygon(merged, geometryFactory);
             SimpleFeature feature = SimpleFeatureBuilder.build(
@@ -172,78 +200,26 @@ public class VectorizeStep {
         return collection;
     }
 
-    private Map<Double, List<Polygon>> collectPolygonsByValue(GridCoverage2D coverage, int band,
-                                                              List<Double> noDataValues) throws IOException {
-        RenderedImage image = coverage.getRenderedImage();
-        Raster raster = image.getData();
-
-        if (band >= raster.getNumBands()) {
-            throw new IllegalArgumentException("Band index " + band + " is outside available raster bands");
-        }
-
-        GeometryFactory geometryFactory = new GeometryFactory();
-        GridGeometry2D gridGeometry = coverage.getGridGeometry();
-        MathTransform2D gridToCrs = gridGeometry.getGridToCRS2D(PixelOrientation.UPPER_LEFT);
-
-        Map<Double, List<Polygon>> polygonsByValue = new LinkedHashMap<>();
-        GridEnvelope2D gridRange = gridGeometry.getGridRange2D();
-        int gridMinX = gridRange.x;
-        int gridMinY = gridRange.y;
-        int width = gridRange.width;
-        int height = gridRange.height;
-
-        int rasterMinX = raster.getMinX();
-        int rasterMinY = raster.getMinY();
-
-        for (int y = 0; y < height; y++) {
-            int rasterY = rasterMinY + y;
-            int gridY = gridMinY + y;
-            for (int x = 0; x < width; x++) {
-                int rasterX = rasterMinX + x;
-                int gridX = gridMinX + x;
-                double value = raster.getSampleDouble(rasterX, rasterY, band);
-                if (Double.isNaN(value) || containsValue(noDataValues, value)) {
+    private Map<Double, List<Geometry>> collectGeometriesByValue(SimpleFeatureCollection polygons) {
+        Map<Double, List<Geometry>> geometriesByValue = new LinkedHashMap<>();
+        try (SimpleFeatureIterator iterator = polygons.features()) {
+            while (iterator.hasNext()) {
+                SimpleFeature feature = iterator.next();
+                Geometry geometry = (Geometry) feature.getDefaultGeometry();
+                if (geometry == null || geometry.isEmpty()) {
                     continue;
                 }
-                Polygon cellPolygon = buildCellPolygon(gridToCrs, gridX, gridY, geometryFactory);
-                polygonsByValue.computeIfAbsent(value, ignored -> new ArrayList<>()).add(cellPolygon);
+
+                Object attribute = feature.getAttribute(VALUE_ATTRIBUTE_NAME);
+                if (!(attribute instanceof Number)) {
+                    throw new IllegalStateException("Polygon extraction returned feature without numeric value attribute");
+                }
+
+                double value = ((Number) attribute).doubleValue();
+                geometriesByValue.computeIfAbsent(value, ignored -> new ArrayList<>()).add(geometry);
             }
         }
-
-        return polygonsByValue;
-    }
-
-    private Polygon buildCellPolygon(MathTransform2D gridToCrs,
-                                     double gridX, double gridY,
-                                     GeometryFactory geometryFactory) throws IOException {
-        try {
-            Coordinate[] coordinates = new Coordinate[5];
-            coordinates[0] = transform(gridToCrs, gridX, gridY);
-            coordinates[1] = transform(gridToCrs, gridX + 1, gridY);
-            coordinates[2] = transform(gridToCrs, gridX + 1, gridY + 1);
-            coordinates[3] = transform(gridToCrs, gridX, gridY + 1);
-            coordinates[4] = coordinates[0];
-            return geometryFactory.createPolygon(coordinates);
-        } catch (TransformException e) {
-            throw new IOException("Failed to transform raster cell to CRS coordinates", e);
-        }
-    }
-
-    private Coordinate transform(MathTransform2D transform,
-                                 double x, double y) throws TransformException {
-        DirectPosition2D source = new DirectPosition2D(x, y);
-        DirectPosition2D target = new DirectPosition2D();
-        transform.transform((Point2D) source, target);
-        return new Coordinate(target.x, target.y);
-    }
-
-    private boolean containsValue(List<Double> values, double candidate) {
-        for (Double value : values) {
-            if (value != null && Double.compare(value, candidate) == 0) {
-                return true;
-            }
-        }
-        return false;
+        return geometriesByValue;
     }
 
     private SimpleFeatureType buildFeatureType(CoordinateReferenceSystem crs, String layerName) {
@@ -261,6 +237,17 @@ public class VectorizeStep {
             return geometry;
         } else if (geometry instanceof Polygon) {
             return geometryFactory.createMultiPolygon(new Polygon[]{(Polygon) geometry});
+        } else if (geometry instanceof GeometryCollection) {
+            List<Polygon> polygons = new ArrayList<>(geometry.getNumGeometries());
+            for (int i = 0; i < geometry.getNumGeometries(); i++) {
+                Geometry part = geometry.getGeometryN(i);
+                if (part instanceof Polygon) {
+                    polygons.add((Polygon) part);
+                }
+            }
+            if (!polygons.isEmpty()) {
+                return geometryFactory.createMultiPolygon(polygons.toArray(new Polygon[0]));
+            }
         }
         throw new IllegalArgumentException("Expected polygonal geometry but received: " + geometry.getGeometryType());
     }
