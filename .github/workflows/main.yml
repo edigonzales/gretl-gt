@@ -39,5 +39,5 @@ jobs:
 
       - name: Build plugin
         run: |
-          ./gradlew build -i -x test
+          ./gradlew build -i -x test functionalTest
           ls -la build/libs
