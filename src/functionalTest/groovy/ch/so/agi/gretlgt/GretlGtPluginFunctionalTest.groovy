@@ -29,6 +29,6 @@ class GretlGtPluginFunctionalTest extends Specification {
             .build()
 
         then:
-        result.output.contains("gretl")
+        result.output.contains("Gretl")
     }
 }

@@ -24,7 +24,7 @@ public final class RasterReclassify {
 
     /**
      * Reclassify using consecutive breakpoints.
-     * Example breaks: {0,55,60,65,70,500} -> [0,55), [55,60), [60,65), [65,70), [70,500]
+     * Example breaks: {0,55,60,65,70,500} -&gt; [0,55), [55,60), [60,65), [65,70), [70,500]
      * Class values are 1..N by default.
      */
     public static GridCoverage2D reclassifyByBreaks(

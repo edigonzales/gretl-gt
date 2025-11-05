@@ -47,6 +47,10 @@ dependencies {
 
     testImplementation "org.junit.jupiter:junit-jupiter:5.10.3"
     testImplementation gradleTestKit()
+    
+    def spockBom = platform('org.spockframework:spock-bom:2.3-groovy-3.0')
+    testImplementation spockBom
+    testImplementation 'org.spockframework:spock-core'
 }
 
 tasks.withType(Test).configureEach {

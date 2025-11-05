@@ -27,11 +27,17 @@ jobs:
           java-version: '17'
           cache: 'gradle'
 
-      - name: Run unit tests
+      - name: Run tests
         run: |
-          ./gradlew clean test -i
+          ./gradlew clean test functionalTest -i
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ failure() }}
+        with:
+          name: tests
+          path: build/reports/tests/
 
       - name: Build plugin
         run: |
-          ./gradlew build -i 
+          ./gradlew build -i -x test
           ls -la build/libs
