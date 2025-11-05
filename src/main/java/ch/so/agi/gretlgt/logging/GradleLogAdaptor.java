@@ -1,31 +1,37 @@
 package ch.so.agi.gretlgt.logging;
 
-import org.gradle.api.logging.*;
+import org.gradle.api.logging.Logger;
+import org.gradle.api.logging.Logging;
 
 /**
- * Class taking care of the logging when using the Steps integrated in Gradle
- * (When running the corresponding Tasks in Gradle).
+ * {@link GretlLogger} implementation that bridges to Gradle's structured
+ * logging API. Messages are forwarded to the build's logger so they end up in
+ * the Gradle console with the expected formatting and grouping.
  */
 public class GradleLogAdaptor implements GretlLogger {
 
-    private org.gradle.api.logging.Logger logger;
+    private final Logger logger;
 
-    GradleLogAdaptor(Class logSource) {
+    GradleLogAdaptor(Class<?> logSource) {
         this.logger = Logging.getLogger(logSource);
     }
 
+    @Override
     public void info(String msg) {
         logger.info(msg);
     }
 
+    @Override
     public void debug(String msg) {
         logger.debug(msg);
     }
 
+    @Override
     public void lifecycle(String msg) {
         logger.lifecycle(msg);
     }
 
+    @Override
     public void error(String msg, Throwable thrown) {
         logger.error(msg, thrown);
     }
