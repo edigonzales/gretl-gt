@@ -39,10 +39,18 @@ public class RasterReclassifyStep {
     private static final int[] DEFAULT_CLASS_VALUES = {0, 55, 60, 65, 70};
     private static final double DEFAULT_NO_DATA = -100d;
     
+    /**
+     * Creates a step instance using the class name for logging context.
+     */
     public RasterReclassifyStep() {
         this(null);
     }
-    
+
+    /**
+     * Creates a step instance that logs progress messages with the provided task name.
+     *
+     * @param taskName optional label used in lifecycle log messages; if {@code null} the class name is used
+     */
     public RasterReclassifyStep(String taskName) {
         if (taskName == null) {
             this.taskName = RasterReclassifyStep.class.getSimpleName();
@@ -51,15 +59,48 @@ public class RasterReclassifyStep {
         }
         this.log = LogEnvironment.getLogger(this.getClass());
     }
-    
+
+    /**
+     * Executes the reclassification with the default break points, class values and no-data marker.
+     *
+     * @param inputPath   path to the raster to reclassify
+     * @param outputPath  path where the GeoTIFF result should be written
+     * @throws IOException                   if the raster cannot be read or written
+     * @throws NoSuchAuthorityCodeException  if the Swiss LV95 CRS cannot be resolved
+     * @throws FactoryException              if CRS creation fails for other reasons
+     */
     public void execute(Path inputPath, Path outputPath) throws IOException, NoSuchAuthorityCodeException, FactoryException {
         executeInternal(inputPath, outputPath, DEFAULT_BREAKS, DEFAULT_CLASS_VALUES, DEFAULT_NO_DATA);
     }
 
+    /**
+     * Executes the reclassification with caller-supplied break points and default no-data handling.
+     *
+     * @param inputPath   path to the raster to reclassify
+     * @param outputPath  path where the GeoTIFF result should be written
+     * @param breaks      ordered break points defining the class intervals
+     * @throws IOException                   if the raster cannot be read or written
+     * @throws NoSuchAuthorityCodeException  if the Swiss LV95 CRS cannot be resolved
+     * @throws FactoryException              if CRS creation fails for other reasons
+     */
     public void execute(Path inputPath, Path outputPath, double[] breaks) throws IOException, NoSuchAuthorityCodeException, FactoryException {
         execute(inputPath, outputPath, breaks, DEFAULT_NO_DATA);
     }
 
+    /**
+     * Executes the reclassification with caller-supplied break points and no-data value.
+     *
+     * <p>Class values are derived by rounding the lower bound of each break interval. This method delegates to the
+     * internal implementation that handles reading, reclassifying and writing the raster.</p>
+     *
+     * @param inputPath   path to the raster to reclassify
+     * @param outputPath  path where the GeoTIFF result should be written
+     * @param breaks      ordered break points defining the class intervals
+     * @param noData      the value that should represent missing data in the output coverage
+     * @throws IOException                   if the raster cannot be read or written
+     * @throws NoSuchAuthorityCodeException  if the Swiss LV95 CRS cannot be resolved
+     * @throws FactoryException              if CRS creation fails for other reasons
+     */
     public void execute(Path inputPath, Path outputPath, double[] breaks, double noData)
             throws IOException, NoSuchAuthorityCodeException, FactoryException {
         Objects.requireNonNull(breaks, "breaks");

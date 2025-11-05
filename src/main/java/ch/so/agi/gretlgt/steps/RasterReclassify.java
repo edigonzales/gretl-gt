@@ -88,7 +88,15 @@ public final class RasterReclassify {
         );
     }
 
-    /** Overload that accepts a List of breaks. */
+    /**
+     * Reclassify using consecutive breakpoints provided as a {@link List} of {@link Double} values.
+     *
+     * @param source   the input coverage whose values should be reclassified
+     * @param band     the band index within the source coverage to evaluate
+     * @param breaks   ordered break values describing the class boundaries; must contain at least two entries
+     * @param noData   the value to write for pixels that contain "no data" in the source coverage
+     * @return a new coverage instance with class values assigned for each break interval
+     */
     public static GridCoverage2D reclassifyByBreaks(
             GridCoverage2D source,
             int band,
@@ -114,6 +122,18 @@ public final class RasterReclassify {
         return breaks.length - 1; // number of bins
     }
     
+    /**
+     * Ensures the supplied coverage exposes a real-world coordinate reference system.
+     *
+     * <p>If the coverage already declares a CRS that is not an {@link EngineeringCRS}, the coverage
+     * is returned unchanged. Otherwise a new coverage is created that assigns the provided
+     * {@code defaultCrs} while preserving the original envelope extents or, if missing, derives an
+     * envelope from the raster dimensions.</p>
+     *
+     * @param src         the coverage to inspect
+     * @param defaultCrs  the CRS that should be applied when the coverage lacks one
+     * @return a coverage with a non-engineering CRS
+     */
     public static GridCoverage2D ensureCrs(GridCoverage2D src, CoordinateReferenceSystem defaultCrs) {
         CoordinateReferenceSystem crs = src.getCoordinateReferenceSystem2D();
         boolean missing =
