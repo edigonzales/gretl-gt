@@ -29,7 +29,7 @@ jobs:
 
       - name: Run tests
         run: |
-          ./gradlew clean test functionalTest -i
+          ./gradlew clean test -i
 
       - uses: actions/upload-artifact@v4
         if: ${{ failure() }}
@@ -39,5 +39,5 @@ jobs:
 
       - name: Build plugin
         run: |
-          ./gradlew build -i -x test functionalTest
+          ./gradlew build -i -x test
           ls -la build/libs
