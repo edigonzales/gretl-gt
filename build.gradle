@@ -42,15 +42,16 @@ dependencies {
     implementation "org.geotools:gt-shapefile:${geotoolsVersion}"
     implementation "org.geotools:gt-process-raster:${geotoolsVersion}"
     //implementation "org.geotools:gt-epsg-hsql:${geotoolsVersion}"
+    implementation "javax.media:jai_core:1.1.3"
+    implementation "javax.media:jai_imageio:1.1"
 
     runtimeOnly "org.geotools:gt-epsg-hsql:${geotoolsVersion}"
 
     testImplementation "org.junit.jupiter:junit-jupiter:5.10.3"
     testImplementation gradleTestKit()
     
-    def spockBom = platform('org.spockframework:spock-bom:2.3-groovy-3.0')
-    testImplementation spockBom
-    testImplementation 'org.spockframework:spock-core'
+    //testImplementation(platform("org.spockframework:spock-bom:2.3-groovy-3.0")) 
+    //testImplementation 'org.spockframework:spock-core'
 }
 
 tasks.withType(Test).configureEach {
@@ -68,6 +69,7 @@ gradlePlugin {
     }
 }
 
+/*
 sourceSets {
     functionalTest {
         groovy {
@@ -92,6 +94,7 @@ tasks.register('functionalTest', Test) {
 }
 
 check.dependsOn tasks.named('functionalTest')
+*/
 
 publishing {
     publications {
@@ -103,4 +106,12 @@ publishing {
             }
         }
     }
+}
+
+tasks.withType(Javadoc).configureEach {
+    // Suppress doclint (removes most warnings from JDK8+)
+    options.addBooleanOption('Xdoclint:none', true)
+
+    // Make javadoc quieter about everything else
+    options.quiet()
 }
