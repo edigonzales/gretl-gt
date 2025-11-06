@@ -108,7 +108,23 @@ public class VectorizeStep {
                 band,
                 cellValues));
 
+        // Ensure GeoTools formats are properly initialized before attempting to read coverage
+        // This is important for TestKit environment where service loading may differ
+        org.geotools.coverage.grid.io.GridFormatFinder.scanForPlugins();
+        // Also scan for JAI-EXT formats specifically
+        try {
+            Class<?> jaiExtInit = Class.forName("org.geotools.coverage.processing.Operations");
+            log.lifecycle("JAI-EXT operations class loaded successfully");
+        } catch (ClassNotFoundException e) {
+            log.lifecycle("JAI-EXT operations class not available: " + e.getMessage());
+        }
+        
         GridCoverage2D coverage = readCoverage(rasterPath);
+        if (coverage == null) {
+            throw new IOException("Unable to read raster coverage from " + rasterPath + 
+                ". This may be due to missing format readers in the classpath.");
+        }
+        
         PolygonExtractionProcess process = new PolygonExtractionProcess();
         List<DissolvedFeature> dissolvedFeatures = new ArrayList<>();
         SimpleFeatureType extractedType = null;
@@ -127,6 +143,17 @@ public class VectorizeStep {
                 log.lifecycle("jt-vectorize present ✔");
             } catch (ClassNotFoundException e) {
                 log.lifecycle("jt-vectorize missing ✖");
+            }
+            
+            // Check for null arguments that might cause the error
+            if (coverage == null) {
+                throw new IOException("Coverage is null - unable to process raster " + rasterPath);
+            }
+            if (Integer.valueOf(band) == null) {
+                throw new IOException("Band index is null");
+            }
+            if (classificationRanges == null) {
+                throw new IOException("Classification ranges are null");
             }
             
             SimpleFeatureCollection extracted =
