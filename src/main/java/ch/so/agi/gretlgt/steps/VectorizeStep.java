@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
@@ -46,11 +47,12 @@ import org.geotools.referencing.CRS;
  * persists the result in a GeoPackage layer.
  * <p>
  * The step relies on {@link PolygonExtractionProcess} (which in turn uses JAI)
- * to vectorise contiguous raster cells. Only cells whose band value equals the
- * provided {@code cellValue} are considered. The extracted polygons are
- * dissolved into a single {@link MultiPolygon}, their attribute named
- * {@code value} is set to the extracted cell value and the result is stored in a
- * GeoPackage layer whose table name matches the source raster file name.
+ * to vectorise contiguous raster cells. Only cells whose band value equals one
+ * of the provided {@code cellValues} are considered. The extracted polygons are
+ * dissolved into {@link MultiPolygon} geometries per value, their attribute
+ * named {@code value} is set to the extracted cell value and the result is
+ * stored in a GeoPackage layer whose table name matches the source raster file
+ * name.
  * </p>
  */
 public class VectorizeStep {
@@ -84,35 +86,58 @@ public class VectorizeStep {
      * @param rasterPath      path to the raster to analyse
      * @param geopackagePath  destination GeoPackage path
      * @param band            zero-based raster band index to inspect
-     * @param cellValue       raster cell value to vectorise
-     * @throws IOException        if the raster cannot be read or the GeoPackage cannot be written
-     * @throws ProcessException   if the polygon extraction process fails
+     * @param cellValues      raster cell values to vectorise
+     * @throws IOException              if the raster cannot be read or the GeoPackage cannot be written
+     * @throws ProcessException         if the polygon extraction process fails
+     * @throws IllegalArgumentException if {@code cellValues} is empty or contains {@code null}
      */
-    public void execute(Path rasterPath, Path geopackagePath, int band, double cellValue)
+    public void execute(Path rasterPath, Path geopackagePath, int band, Collection<Double> cellValues)
             throws IOException, ProcessException {
         Objects.requireNonNull(rasterPath, "rasterPath");
         Objects.requireNonNull(geopackagePath, "geopackagePath");
+        Objects.requireNonNull(cellValues, "cellValues");
+        if (cellValues.isEmpty()) {
+            throw new IllegalArgumentException("cellValues must not be empty");
+        }
 
         log.lifecycle(String.format(Locale.ROOT,
-                "Start VectorizeStep(Name: %s rasterPath: %s geopackagePath: %s band: %d cellValue: %s)",
+                "Start VectorizeStep(Name: %s rasterPath: %s geopackagePath: %s band: %d cellValues: %s)",
                 taskName,
                 rasterPath,
                 geopackagePath,
                 band,
-                cellValue));
+                cellValues));
 
         GridCoverage2D coverage = readCoverage(rasterPath);
         PolygonExtractionProcess process = new PolygonExtractionProcess();
-        @SuppressWarnings({"rawtypes", "unchecked"})
-        List<Range> classificationRanges = new ArrayList<>();
-        classificationRanges.add(Range.create(cellValue, true, cellValue, true));
-        SimpleFeatureCollection extracted =
-                process.execute(coverage, Integer.valueOf(band), Boolean.FALSE, null, null, classificationRanges, null);
+        List<DissolvedFeature> dissolvedFeatures = new ArrayList<>();
+        SimpleFeatureType extractedType = null;
 
-        SimpleFeatureType extractedType = extracted.getSchema();
-        MultiPolygon dissolved = dissolveToMultipolygon(extracted);
+        for (Double cellValue : cellValues) {
+            if (cellValue == null) {
+                throw new IllegalArgumentException("cellValues must not contain null values");
+            }
+            @SuppressWarnings({"rawtypes", "unchecked"})
+            List<Range> classificationRanges = new ArrayList<>();
+            classificationRanges.add(Range.create(cellValue, true, cellValue, true));
+            SimpleFeatureCollection extracted =
+                    process.execute(coverage, Integer.valueOf(band), Boolean.FALSE, null, null, classificationRanges, null);
 
-        writeToGeoPackage(rasterPath, geopackagePath, extractedType, dissolved, cellValue);
+            if (extractedType == null) {
+                extractedType = extracted.getSchema();
+            }
+
+            MultiPolygon dissolved = dissolveToMultipolygon(extracted);
+            if (!dissolved.isEmpty()) {
+                dissolvedFeatures.add(new DissolvedFeature(dissolved, cellValue));
+            }
+        }
+
+        if (extractedType == null) {
+            throw new IOException("Unable to determine feature type from raster extraction");
+        }
+
+        writeToGeoPackage(rasterPath, geopackagePath, extractedType, dissolvedFeatures);
 
         log.lifecycle(String.format(Locale.ROOT,
                 "Finished VectorizeStep(Name: %s rasterPath: %s geopackagePath: %s)",
@@ -204,19 +229,29 @@ public class VectorizeStep {
     }
 
     private void writeToGeoPackage(Path rasterPath, Path geopackagePath, SimpleFeatureType extractedType,
-            MultiPolygon dissolved, double cellValue) throws IOException {
+            List<DissolvedFeature> dissolvedFeatures) throws IOException {
         String layerName = deriveLayerName(rasterPath);
         GeometryDescriptor geometryDescriptor = extractedType.getGeometryDescriptor();
         CoordinateReferenceSystem crs = geometryDescriptor != null ? geometryDescriptor.getCoordinateReferenceSystem() : null;
 
         SimpleFeatureType targetType = buildTargetType(layerName, geometryDescriptor, crs);
         ListFeatureCollection collection = new ListFeatureCollection(targetType);
-        if (!dissolved.isEmpty()) {
-            SimpleFeatureBuilder builder = new SimpleFeatureBuilder(targetType);
-            builder.set(targetType.getGeometryDescriptor().getLocalName(), dissolved);
-            builder.set("value", cellValue);
-            SimpleFeature feature = builder.buildFeature("0");
-            collection.add(feature);
+        ReferencedEnvelope bounds = null;
+        String geometryName = targetType.getGeometryDescriptor().getLocalName();
+        SimpleFeatureBuilder builder = new SimpleFeatureBuilder(targetType);
+
+        int featureIndex = 0;
+        for (DissolvedFeature featureData : dissolvedFeatures) {
+            builder.set(geometryName, featureData.geometry);
+            builder.set("value", featureData.value);
+            collection.add(builder.buildFeature(Integer.toString(featureIndex++)));
+
+            if (bounds == null) {
+                bounds = new ReferencedEnvelope(featureData.geometry.getEnvelopeInternal(), crs);
+            } else {
+                bounds.expandToInclude(featureData.geometry.getEnvelopeInternal());
+            }
+            builder.reset();
         }
 
         File geopackageFile = geopackagePath.toFile();
@@ -231,8 +266,8 @@ public class VectorizeStep {
         entry.setTableName(layerName);
         entry.setGeometryColumn(targetType.getGeometryDescriptor().getLocalName());
         entry.setGeometryType(Geometries.MULTIPOLYGON);
-        if (!dissolved.isEmpty() && crs != null) {
-            entry.setBounds(new ReferencedEnvelope(dissolved.getEnvelopeInternal(), crs));
+        if (bounds != null) {
+            entry.setBounds(bounds);
         }
         if (crs != null) {
             try {
@@ -276,5 +311,15 @@ public class VectorizeStep {
             return name.substring(0, dotIndex);
         }
         return name;
+    }
+
+    private static final class DissolvedFeature {
+        private final MultiPolygon geometry;
+        private final double value;
+
+        private DissolvedFeature(MultiPolygon geometry, double value) {
+            this.geometry = geometry;
+            this.value = value;
+        }
     }
 }

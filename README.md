@@ -13,15 +13,15 @@ original exception.
 
 ## VectorizeStep
 
-`ch.so.agi.gretlgt.steps.VectorizeStep` converts raster cells with a matching band value into a dissolved multipolygon and stores
-it in a GeoPackage. The table name inside the GeoPackage matches the input raster file name.
+`ch.so.agi.gretlgt.steps.VectorizeStep` converts raster cells with matching band values into dissolved multipolygons and stores
+them in a GeoPackage. The table name inside the GeoPackage matches the input raster file name.
 
 | Parameter | Description |
 |-----------|-------------|
 | `rasterPath` | Path to the raster file that should be vectorised. |
 | `geopackagePath` | Destination GeoPackage that will receive the multipolygon layer. |
 | `band` | Zero-based index of the raster band to inspect. |
-| `cellValue` | Raster cell value that should be converted into vector geometry. |
+| `cellValues` | Collection of raster cell values that should be converted into vector geometry. |
 
-The resulting layer contains a single multipolygon feature (if at least one matching cell exists) with a `value` attribute set to the
+The resulting layer contains one multipolygon feature per requested cell value (if matching cells exist) with a `value` attribute set to the
 cell value that triggered the extraction.
