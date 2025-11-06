@@ -40,6 +40,7 @@ dependencies {
     implementation "org.geotools:gt-coverage:${geotoolsVersion}"
     implementation "org.geotools:gt-arcgrid:${geotoolsVersion}"
     implementation "org.geotools:gt-shapefile:${geotoolsVersion}"
+    implementation "org.geotools:gt-geopkg:${geotoolsVersion}"
     implementation "org.geotools:gt-process-raster:${geotoolsVersion}"
     //implementation "org.geotools:gt-epsg-hsql:${geotoolsVersion}"
     implementation "javax.media:jai_core:1.1.3"
