@@ -120,6 +120,15 @@ public class VectorizeStep {
             @SuppressWarnings({"rawtypes", "unchecked"})
             List<Range> classificationRanges = new ArrayList<>();
             classificationRanges.add(Range.create(cellValue, true, cellValue, true));
+            
+            log.lifecycle("JAI-EXT enabled: " + Boolean.getBoolean("org.geotools.coverage.jaiext.enabled"));
+            try {
+                Class.forName("org.jaitools.media.jai.vectorize.VectorizeDescriptor");
+                log.lifecycle("jt-vectorize present ✔");
+            } catch (ClassNotFoundException e) {
+                log.lifecycle("jt-vectorize missing ✖");
+            }
+            
             SimpleFeatureCollection extracted =
                     process.execute(coverage, Integer.valueOf(band), Boolean.FALSE, null, null, classificationRanges, null);
 

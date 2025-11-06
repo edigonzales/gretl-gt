@@ -43,6 +43,9 @@ dependencies {
     implementation "org.geotools:gt-process-raster:${geotoolsVersion}"
     implementation "org.geotools:gt-geopkg:${geotoolsVersion}"
     //implementation "org.geotools:gt-epsg-hsql:${geotoolsVersion}"
+    implementation "org.jaitools:jt-vectorize:1.6.0"
+    implementation "org.jaitools:jt-utils:1.6.0"
+    implementation "org.jaitools:jt-rangelookup:1.6.0"
     implementation "javax.media:jai_core:1.1.3"
     implementation "javax.media:jai_imageio:1.1"
 
