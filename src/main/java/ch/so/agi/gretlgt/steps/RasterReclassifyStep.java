@@ -133,7 +133,7 @@ public class RasterReclassifyStep {
         CoordinateReferenceSystem swiss = CRS.decode("EPSG:2056", true);
         GridCoverage2D stamped = RasterReclassify.ensureCrs(cov, swiss);
 
-        GridCoverage2D out1 = RasterReclassify.reclassifyByBreaks(stamped, 0, breaks, classValues, noData);
+        GridCoverage2D out = RasterReclassify.reclassifyByBreaks(stamped, 0, breaks, classValues, noData);
 
         File outFile = outputPath.toFile();
         File parent = outFile.getParentFile();
@@ -144,7 +144,7 @@ public class RasterReclassifyStep {
         GeoTiffWriter writer = null;
         try {
             writer = new GeoTiffWriter(outFile);
-            writer.write(out1, null);
+            writer.write(out, null);
         } finally {
             if (writer != null) {
                 writer.dispose();  // important: releases resources
